@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<title>失落之岛 · Libertalia</title>
+<style>
+  :root{
+    --bone:#e9e3d4; --bone-dim:rgba(233,227,212,.66); --bone-faint:rgba(233,227,212,.28);
+    --gold:#d8b06a; --jade:#8fb98a; --ink:#070b09;
+    --panel:rgba(7,12,10,.58); --line:rgba(233,227,212,.18);
+    --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px);
+    --sal: env(safe-area-inset-left, 0px); --sar: env(safe-area-inset-right, 0px);
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ height:100%; margin:0; overflow:hidden; background:#05080a; }
+  body{
+    color:var(--bone); font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+    user-select:none; -webkit-user-select:none; touch-action:none;
+  }
+  #app{ position:fixed; inset:0; overflow:hidden; }
+  #view{ position:absolute; inset:0; width:100%; height:100%; display:block; outline:none; }
+  #ui{ position:absolute; inset:0; pointer-events:none; }
+  body.locked #view{ cursor:none; }
+
+  /* ---------- objective panel ---------- */
+  #quest{
+    position:absolute; top:calc(22px + var(--sat)); left:calc(24px + var(--sal));
+    min-width:246px; max-width:min(330px, 62vw);
+    padding:14px 16px 13px; border:1px solid var(--line); border-left:2px solid var(--gold);
+    background:linear-gradient(180deg, rgba(8,14,11,.72), rgba(8,14,11,.40));
+    backdrop-filter:blur(9px); -webkit-backdrop-filter:blur(9px);
+    opacity:0; transform:translateY(-6px); transition:opacity .8s ease, transform .8s ease;
+  }
+  body.started #quest{ opacity:1; transform:none; }
+  #quest h1{
+    margin:0 0 8px; font-size:12px; font-weight:600; letter-spacing:.28em; text-transform:uppercase;
+    color:var(--gold);
+  }
+  #quest .sub{
+    margin:0 0 11px; font-size:10.5px; letter-spacing:.16em; color:var(--bone-faint); text-transform:uppercase;
+  }
+  #quest ul{ margin:0; padding:0; list-style:none; }
+  #quest li{
+    position:relative; padding-left:15px; margin:5px 0; font-size:12.5px; line-height:1.55;
+    color:var(--bone-dim); transition:color .4s ease;
+  }
+  #quest li::before{
+    content:""; position:absolute; left:0; top:7px; width:5px; height:5px;
+    border:1px solid var(--bone-faint); transform:rotate(45deg); transition:.4s ease;
+  }
+  #quest li.done{ color:var(--bone-faint); text-decoration:line-through; text-decoration-color:rgba(216,176,106,.5); }
+  #quest li.done::before{ background:var(--gold); border-color:var(--gold); }
+  #quest .count{
+    display:flex; align-items:center; justify-content:space-between;
+    margin-top:11px; padding-top:9px; border-top:1px solid var(--line);
+    font-size:10.5px; letter-spacing:.2em; color:var(--bone-faint); text-transform:uppercase;
+  }
+  #progress{ color:var(--gold); font-variant-numeric:tabular-nums; letter-spacing:.1em; }
+
+  /* ---------- prompt / toast ---------- */
+  #prompt{
+    position:absolute; left:50%; bottom:calc(96px + var(--sab)); transform:translate(-50%, 10px);
+    padding:9px 18px; font-size:13px; letter-spacing:.08em;
+    border:1px solid rgba(216,176,106,.4); background:rgba(6,10,8,.72);
+    backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+    opacity:0; transition:opacity .22s ease, transform .22s ease; white-space:nowrap;
+  }
+  #prompt.on{ opacity:1; transform:translate(-50%, 0); }
+
+  /* ---------- waypoint marker ---------- */
+  #wm{ position:absolute; left:0; top:0; width:0; height:0; pointer-events:none;
+       opacity:0; transition:opacity .25s ease; z-index:6; }
+  #wm.on{ opacity:1; }
+  #wm-arrow{ position:absolute; left:-15px; top:-15px; width:30px; height:30px;
+             display:flex; align-items:center; justify-content:center;
+             color:var(--gold); font-size:20px; line-height:1;
+             filter:drop-shadow(0 0 6px rgba(0,0,0,.85)); }
+  #wm-ring{ position:absolute; left:-9px; top:-9px; width:18px; height:18px;
+            border:1.5px solid rgba(226,188,116,.95); border-radius:50%;
+            box-shadow:0 0 14px rgba(226,188,116,.55), inset 0 0 8px rgba(226,188,116,.3); }
+  #wm-lbl{ position:absolute; left:0; top:16px; transform:translateX(-50%);
+           white-space:nowrap; font-size:11.5px; letter-spacing:.1em; color:#f4ebd8;
+           text-shadow:0 1px 5px rgba(0,0,0,.95); }
+  #wm-lbl b{ color:var(--gold); font-weight:400; }
+
+  #toast{
+    position:absolute; left:50%; bottom:calc(150px + var(--sab)); transform:translate(-50%, 12px);
+    max-width:min(560px, 82vw); padding:11px 20px; text-align:center;
+    font-size:13.5px; line-height:1.5; letter-spacing:.04em; color:#f3ecdb;
+    border-bottom:1px solid rgba(216,176,106,.55);
+    background:linear-gradient(180deg, rgba(6,10,8,0), rgba(6,10,8,.72));
+    opacity:0; transition:opacity .45s ease, transform .45s ease;
+  }
+  #toast.on{ opacity:1; transform:translate(-50%, 0); }
+
+  #fps{
+    position:absolute; right:calc(14px + var(--sar)); bottom:calc(12px + var(--sab));
+    font-size:10px; letter-spacing:.14em; color:rgba(233,227,212,.35); font-variant-numeric:tabular-nums;
+  }
+  #mute{
+    position:absolute; right:calc(14px + var(--sar)); top:calc(14px + var(--sat));
+    width:34px; height:34px; border-radius:50%; display:grid; place-items:center;
+    border:1px solid rgba(233,227,212,.16); background:rgba(6,10,8,.42); color:rgba(233,227,212,.72);
+    cursor:pointer; transition:color .18s ease, border-color .18s ease, background .18s ease;
+    backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+    z-index:30;
+  }
+  #mute:hover{ color:var(--gold); border-color:rgba(216,176,106,.55); background:rgba(6,10,8,.6); }
+  #mute .slash{ display:none; }
+  #mute.off .slash{ display:block; }
+  #mute.off .wave{ display:none; }
+  #inspect{ position:absolute; right:calc(56px + var(--sar)); top:calc(14px + var(--sat));
+    height:34px; padding:0 12px; z-index:30; pointer-events:auto; cursor:pointer;
+    border:1px solid rgba(233,227,212,.24); background:rgba(6,10,8,.52); color:var(--bone);
+    font:inherit; font-size:11px; letter-spacing:.08em; backdrop-filter:blur(6px); }
+  #inspect.on{ border-color:var(--gold); color:var(--gold); }
+  #angles{ display:none; position:absolute; left:50%; bottom:calc(24px + var(--sab));
+    transform:translateX(-50%); z-index:30; gap:6px; pointer-events:auto; white-space:nowrap; }
+  body.inspecting #angles{ display:flex; }
+  #angles button{ padding:9px 12px; border:1px solid rgba(233,227,212,.3);
+    background:rgba(6,10,8,.72); color:var(--bone); font:inherit; font-size:12px;
+    cursor:pointer; backdrop-filter:blur(6px); }
+  #angles button.active{ border-color:var(--gold); color:var(--gold); }
+  @media(max-width:480px){ #angles button{ padding:8px 9px; font-size:11px; } }
+  #hint{
+    position:absolute; left:calc(24px + var(--sal)); bottom:calc(16px + var(--sab));
+    font-size:10.5px; letter-spacing:.14em; color:rgba(233,227,212,.34);
+  }
+  body.is-touch #hint{ display:none; }
+
+  /* ---------- modal ---------- */
+  #modal{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    background:rgba(3,6,5,.62); backdrop-filter:blur(7px); -webkit-backdrop-filter:blur(7px);
+    opacity:0; pointer-events:none; transition:opacity .3s ease; padding:24px;
+  }
+  #modal.on{ opacity:1; pointer-events:auto; }
+  #modal .paper{
+    position:relative; width:min(560px, 92vw); max-height:78vh; overflow:auto;
+    padding:34px 36px 30px; color:#2b2419;
+    background:
+      radial-gradient(120% 90% at 50% 0%, rgba(255,252,232,.96), rgba(226,213,178,.94)),
+      #e6dcc0;
+    box-shadow:0 30px 80px rgba(0,0,0,.6), inset 0 0 60px rgba(120,96,52,.25);
+    transform:translateY(14px) scale(.985); transition:transform .34s cubic-bezier(.2,.9,.25,1);
+  }
+  #modal.on .paper{ transform:none; }
+  #modal .paper::after{
+    content:""; position:absolute; inset:8px; border:1px solid rgba(90,72,38,.28); pointer-events:none;
+  }
+  #modal-title{
+    margin:0 0 16px; font-size:15px; letter-spacing:.22em; text-transform:uppercase;
+    color:#6b5628; font-weight:600;
+  }
+  #modal-body{ font-size:14px; line-height:1.95; letter-spacing:.02em; }
+  #modal-body p{ margin:0 0 12px; }
+  #modal-body .sign{ text-align:right; font-style:italic; color:#7a6537; font-size:12.5px; }
+  #modal-body .glyph{
+    font-size:16px; letter-spacing:.34em; text-align:center; margin:20px 0;
+    color:#4a3a1c; text-shadow:0 1px 0 rgba(255,255,255,.5);
+  }
+  #modal-close{
+    position:absolute; top:10px; right:12px; width:30px; height:30px; cursor:pointer;
+    border:1px solid rgba(90,72,38,.4); background:transparent; color:#6b5628;
+    font-size:15px; line-height:1; display:grid; place-items:center;
+  }
+  #modal-close:hover{ background:rgba(90,72,38,.12); }
+
+  /* ---------- start screen ---------- */
+  #start{
+    position:absolute; inset:0; z-index:20; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:22px; text-align:center;
+    background:
+      radial-gradient(80% 60% at 50% 42%, rgba(24,44,32,.55), rgba(3,7,5,.94) 72%),
+      radial-gradient(50% 40% at 50% 100%, rgba(120,86,40,.22), transparent 70%),
+      #05080a;
+    transition:opacity .9s ease, visibility .9s ease;
+    padding:0 24px;
+  }
+  #start.gone{ opacity:0; visibility:hidden; }
+  #start .eyebrow{
+    font-size:11px; letter-spacing:.42em; text-transform:uppercase; color:rgba(216,176,106,.75);
+  }
+  #start h1{
+    margin:0; font-size:clamp(38px, 8vw, 74px); font-weight:900; letter-spacing:.14em;
+    line-height:1.05; color:#f0e8d4;
+    text-shadow:0 0 44px rgba(216,176,106,.28), 0 6px 30px rgba(0,0,0,.7);
+  }
+  #start h1 span{ display:block; font-size:.34em; letter-spacing:.5em; font-weight:400; color:rgba(233,227,212,.5); margin-top:16px; }
+  #start p{ margin:0; max-width:min(560px, 84vw); font-size:13.5px; line-height:1.9; color:rgba(233,227,212,.62); }
+  #start-btn{
+    margin-top:10px; padding:14px 42px; cursor:pointer;
+    font-family:inherit; font-size:12.5px; letter-spacing:.34em; text-transform:uppercase;
+    color:#0b1210; background:linear-gradient(180deg, #e2c489, #c69f57);
+    border:none; box-shadow:0 12px 34px rgba(198,159,87,.24), inset 0 1px 0 rgba(255,255,255,.5);
+    transition:transform .2s ease, box-shadow .2s ease;
+  }
+  #start-btn:hover{ transform:translateY(-2px); box-shadow:0 18px 44px rgba(198,159,87,.34), inset 0 1px 0 rgba(255,255,255,.6); }
+  #start .keys{ display:flex; gap:22px; margin-top:14px; flex-wrap:wrap; justify-content:center; }
+  #start .keys div{ font-size:10.5px; letter-spacing:.16em; color:rgba(233,227,212,.34); }
+  #start .keys b{ color:rgba(233,227,212,.72); font-weight:600; }
+  #start .tip{ margin-top:12px; font-size:11px; letter-spacing:.1em; color:rgba(233,227,212,.42); }
+  #start .tip b{ color:var(--gold); font-weight:400; }
+  body.is-touch #start .keys{ display:none; }
+
+  #ending{ position:absolute; inset:0; z-index:25; display:flex; align-items:center; justify-content:center;
+    padding:24px; background:rgba(3,8,6,.82); backdrop-filter:blur(10px);
+    opacity:0; visibility:hidden; pointer-events:none; transition:opacity .5s, visibility .5s; }
+  #ending.on{ opacity:1; visibility:visible; pointer-events:auto; }
+  #ending .card{ width:min(520px, 100%); padding:46px 36px; text-align:center;
+    border:1px solid rgba(216,176,106,.42); background:linear-gradient(160deg,rgba(24,35,28,.96),rgba(8,15,12,.96));
+    box-shadow:0 28px 90px rgba(0,0,0,.55); }
+  #ending .eyebrow{ color:var(--gold); font-size:11px; letter-spacing:.35em; }
+  #ending h2{ margin:20px 0; font-size:clamp(26px,6vw,42px); letter-spacing:.2em; font-weight:600; }
+  #ending p{ color:var(--bone-dim); font-size:14px; line-height:2; }
+  #ending .actions{ display:flex; justify-content:center; gap:12px; margin-top:32px; flex-wrap:wrap; }
+  #ending button{ font:inherit; font-size:12px; letter-spacing:.14em; padding:12px 20px; cursor:pointer;
+    border:1px solid var(--gold); color:#111912; background:var(--gold); }
+  #ending button.secondary{ color:var(--bone); background:transparent; border-color:var(--line); }
+
+  /* ---------- touch controls ---------- */
+  #stick{
+    position:absolute; left:calc(28px + var(--sal)); bottom:calc(30px + var(--sab));
+    width:118px; height:118px; border-radius:50%; display:none; place-items:center;
+    border:1px solid rgba(233,227,212,.2); background:rgba(6,10,8,.32);
+    backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px);
+  }
+  body.is-touch #stick{ display:grid; }
+  #stick-knob{
+    width:46px; height:46px; border-radius:50%;
+    background:radial-gradient(circle at 40% 35%, rgba(233,227,212,.55), rgba(233,227,212,.22));
+    transition:transform .05s linear;
+  }
+  #btn-jump,#btn-use{
+    position:absolute; right:calc(30px + var(--sar)); bottom:calc(36px + var(--sab));
+    width:66px; height:66px; border-radius:50%; display:none; place-items:center;
+    font-family:inherit; font-size:11px; letter-spacing:.1em; color:rgba(233,227,212,.8);
+    border:1px solid rgba(233,227,212,.2); background:rgba(6,10,8,.4); cursor:pointer;
+  }
+  #btn-jump{ bottom:calc(114px + var(--sab)); }
+  #btn-use{ border-color:rgba(216,176,106,.45); }
+  body.is-touch #btn-jump, body.is-touch #btn-use{ display:grid; }
+  body.can-use #btn-use{ background:rgba(216,176,106,.28); color:#1a1409; }
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="view" tabindex="0"></canvas>
+
+  <div id="ui">
+    <div id="quest">
+      <h1>失落之岛</h1>
+      <p class="sub">Libertalia · 第七次登陆</p>
+      <ul id="obj-list"></ul>
+      <div class="count"><span>遗物</span><span id="progress">0 / 3</span></div>
+    </div>
+
+    <div id="wm">
+      <div id="wm-arrow">➤</div>
+      <div id="wm-ring"></div>
+      <div id="wm-lbl"></div>
+    </div>
+
+    <div id="prompt"></div>
+    <div id="toast"></div>
+    <div id="hint">拖动画面转视角 · WASD/方向键 移动 · Shift 疾行 · 空格跳跃 · E 交互</div>
+    <button id="mute" aria-label="声音开关">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 9.5h3L11 6v12l-4-3.5H4z" />
+        <path class="wave" d="M15 9.2a4 4 0 0 1 0 5.6" />
+        <path class="slash" d="M14.6 9.4l5.2 5.2M19.8 9.4l-5.2 5.2" />
+      </svg>
+    </button>
+    <button id="inspect" aria-pressed="false">观察角色</button>
+    <div id="angles" aria-label="角色观察角度">
+      <button data-angle="3.141592653589793">正面</button>
+      <button data-angle="1.5707963267948966">左侧</button>
+      <button data-angle="0" class="active">背面</button>
+      <button data-angle="-1.5707963267948966">右侧</button>
+    </div>
+    <div id="fps"></div>
+  </div>
+
+  <div id="stick"><div id="stick-knob"></div></div>
+  <button id="btn-jump">跳跃</button>
+  <button id="btn-use">交互</button>
+
+  <div id="modal">
+    <div class="paper">
+      <button id="modal-close">×</button>
+      <h2 id="modal-title"></h2>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <div id="start">
+    <div class="eyebrow">Uncharted · 同人试作</div>
+    <h1>失落之岛<span>LIBERTALIA</span></h1>
+    <p>潮水退去后，礁湖里露出一座被丛林吞没的殖民废墟。<br />三件遗物散落在断墙、木箱与拱廊之间。</p>
+    <button id="start-btn">登陆</button>
+    <div class="keys">
+      <div><b>按住画面拖动</b> 转视角</div>
+      <div><b>WASD / ↑↓</b> 前后左右</div>
+      <div><b>← →</b> 原地转身</div>
+      <div><b>Shift</b> 疾行</div>
+      <div><b>E</b> 交互</div>
+      <div><b>滚轮</b> 远近</div>
+      <div><b>V</b> 观察角色</div>
+    </div>
+    <p class="tip">跟着<b>金色光柱</b>走 —— 屏幕上的箭头会一直指向下一个目标。</p>
+  </div>
+  <div id="ending" role="dialog" aria-modal="true" aria-labelledby="ending-title">
+    <div class="card">
+      <div class="eyebrow">LIBERTALIA · 探索完成</div>
+      <h2 id="ending-title">岛的故事，终于完整了</h2>
+      <p>木箱、便条与刻文石板拼出了失落者留下的线索。<br />你带着他们的名字，走出了这座被遗忘的岛。</p>
+      <div class="actions">
+        <button id="ending-restart">重新登陆</button>
+        <button id="ending-continue" class="secondary">继续探索</button>
+      </div>
+    </div>
+  </div>
+</div>
+<!--BUNDLE-->
+</body>
+</html>
