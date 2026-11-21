@@ -121,6 +121,7 @@
   #angles button{ padding:9px 12px; border:1px solid rgba(233,227,212,.3);
     background:rgba(6,10,8,.72); color:var(--bone); font:inherit; font-size:12px;
     cursor:pointer; backdrop-filter:blur(6px); }
+  body.sculpture-study :is(#quest,#hint,#prompt,#wm){ display:none; }
   #angles button.active{ border-color:var(--gold); color:var(--gold); }
   @media(max-width:480px){ #angles button{ padding:8px 9px; font-size:11px; } }
   #hint{
@@ -272,6 +273,7 @@
         <path class="slash" d="M14.6 9.4l5.2 5.2M19.8 9.4l-5.2 5.2" />
       </svg>
     </button>
+    <button id="statue-view" style="position:absolute;right:calc(56px + var(--sar));top:calc(54px + var(--sat));pointer-events:auto;z-index:30;padding:8px 12px;background:#242922;color:#eee;border:1px solid #8b8167;cursor:pointer">观察雕像</button>
     <button id="inspect" aria-pressed="false">观察角色</button>
     <div id="angles" aria-label="角色观察角度">
       <button data-angle="3.141592653589793">正面</button>

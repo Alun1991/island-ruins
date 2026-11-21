@@ -301,7 +301,7 @@ export class Player {
   addLook(dx, dy, sens = 1) {
     if (this.inspectMode) this.orbitYaw -= dx * 0.0022 * sens;
     else this.yaw -= dx * 0.0022 * sens;
-    this.pitch = clamp(this.pitch + dy * 0.0018 * sens, this.inspectMode ? -0.95 : -0.42, this.inspectMode ? 1.25 : 1.05);
+    this.pitch = clamp(this.pitch + dy * 0.0018 * sens, this.inspectMode ? 0 : -0.42, this.inspectMode ? 1.25 : 1.05);
   }
 
   toggleInspectMode() {
@@ -492,7 +492,7 @@ export class Player {
     const origin = this.camTarget;
     const dir = desired.clone().sub(origin);
     const maxLen = dir.length();
-    if (maxLen > 1e-4 && !this.inspectMode) {
+    if (maxLen > 1e-4) {
       dir.multiplyScalar(1 / maxLen);
       let hitT = maxLen;
       for (const c of colliders) {
@@ -515,6 +515,10 @@ export class Player {
     this.camPos.lerp(desired, clamp(dt * (closer ? 30 : 9), 0, 1));
     if (this.camPos.lengthSq() === 0) this.camPos.copy(desired);
 
+    // Easing between two safe points can still cut through a slope or deck.
+    const cameraFloor = this.groundAt(colliders, this.camPos, Infinity);
+    this.camPos.y = Math.max(this.camPos.y, cameraFloor + 0.45);
+
     // hide the body when the camera is pulled right up against it
     this.root.visible = this.camPos.distanceTo(this.camTarget) > 1.35;
 
@@ -525,14 +529,14 @@ export class Player {
   }
 
   /** terrain, or the top of a low box the player is standing on */
-  groundAt(colliders) {
+  groundAt(colliders, point = this.pos, maxTop = point.y + 0.5) {
     const r = this.radius;
-    let g = terrainHeight(this.pos.x, this.pos.z);
+    let g = terrainHeight(point.x, point.z);
     for (const c of colliders) {
       if (c.top === undefined) continue;
-      if (this.pos.x > c.minX - r && this.pos.x < c.maxX + r &&
-          this.pos.z > c.minZ - r && this.pos.z < c.maxZ + r &&
-          c.top <= this.pos.y + 0.5 && c.top > g) g = c.top;
+      if (point.x > c.minX - r && point.x < c.maxX + r &&
+          point.z > c.minZ - r && point.z < c.maxZ + r &&
+          c.top <= maxTop && c.top > g) g = c.top;
     }
     return g;
   }

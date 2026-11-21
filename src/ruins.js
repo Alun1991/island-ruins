@@ -1,3 +1,4 @@
+import { seaStatue } from './sea-statue.js';
 import * as THREE from '../vendor/three.module.js';
 import {
   GeoBuilder, M4, lerp, clamp, smoothstep, rr, rnd, stoneSurface, woodSurface,
@@ -33,6 +34,7 @@ export function createRuins(scene) {
   const colliders = [];
   const interactables = [];
   const flags = [];
+  const statueFocus = new THREE.Vector3();
 
   const loader = new THREE.TextureLoader();
   const stoneS = {
@@ -639,9 +641,10 @@ float wHash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
     stone.add(G.box, M4(sx, sy + 0.52, sz, 0, 0.2, 0, 2.2, 0.40, 2.2), new THREE.Color(0.64, 0.62, 0.56));
     stone.add(G.box, M4(sx, sy + 0.86, sz, 0, 0.2, 0, 1.95, 0.28, 1.95), new THREE.Color(0.66, 0.64, 0.58));
     const figY = sy + 1.0;
-    stone.add(G.cylTaper, M4(sx, figY + 0.82, sz, 0, 0.2, 0.02, 0.86, 1.65, 0.72), new THREE.Color(0.67, 0.65, 0.59));
-    stone.add(G.sph, M4(sx, figY + 1.92, sz, 0, 0, 0, 0.60, 0.70, 0.60), new THREE.Color(0.69, 0.67, 0.61));
-    stone.add(G.box, M4(sx, figY + 1.42, sz + 0.34, 0.5, 0, 0, 0.15, 1.45, 0.15), new THREE.Color(0.63, 0.61, 0.56));
+    const figure = seaStatue();
+    figure.position.set(sx,figY,sz);
+    scene.add(figure);
+    statueFocus.set(sx,figY+0.95,sz);
     addCollider(sx, sz, 2.6, 2.6, 'statue', 3.2);
     aoBlob(sx, sz, 3.8, 3.8);
   }
@@ -1123,7 +1126,7 @@ float wHash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
   }
 
   return {
-    colliders, interactables, flags,
+    colliders, interactables, flags, statueFocus,
     update(t) {
       for (const f of flags) f.rotation.z = Math.sin(t * 2.1 + f.position.x) * 0.03;
     },

@@ -1,3 +1,4 @@
+import { createSculptureStudy } from './sculpture-study.js';
 import * as THREE from '../vendor/three.module.js';
 import { PostFX } from './post.js';
 import { createEnvironment, terrainHeight } from './env.js';
@@ -149,7 +150,7 @@ function updateWaypoint(dt, t) {
     if (d < bestD) { bestD = d; best = it; }
   }
   for (const b of beacons) {
-    const vis = !b.it.taken;
+    const vis = !viewingStatue && !b.it.taken;
     b.g.visible = vis;
     if (vis) {
       const d = b.it.pos.distanceTo(player.pos);
@@ -169,7 +170,7 @@ function updateWaypoint(dt, t) {
       }
     }
   }
-  if (!best || hud.modalOpen || bestD < 1.6) { wm.classList.remove('on'); return; }
+  if (viewingStatue || !best || hud.modalOpen || bestD < 1.6) { wm.classList.remove('on'); return; }
 
   _wmv.copy(best.pos).project(camera);
   const W = window.innerWidth, H = window.innerHeight;
@@ -338,7 +339,29 @@ muteBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMute(); })
 muteBtn.classList.toggle('off', ambience.muted);
 
 const inspectBtn = document.getElementById('inspect');
+let viewingStatue = false;
+let sculptureStudy;
+const statueButton = document.getElementById('statue-view');
+statueButton.onclick = () => {
+  if (!started) return;
+  if (player.inspectMode) toggleInspect();
+  else {
+    toggleInspect();
+    viewingStatue = true;
+    sculptureStudy ??= createSculptureStudy();
+    document.body.classList.add('sculpture-study');
+    player.orbitYaw = 0.18;
+    for (const button of document.querySelectorAll('#angles button')) button.classList.remove('active');
+    player.pitch = 0.08;
+    player.camDist = Math.max(3.4, 1.8 / camera.aspect);
+    statueButton.textContent = '退出雕像观察';
+    hud.toast('拖动画面环绕青铜环雕 · 滚轮调整远近', 3000);
+  }
+};
 function toggleInspect() {
+  viewingStatue = false;
+  document.body.classList.remove('sculpture-study');
+  statueButton.textContent = '观察雕像';
   const inspecting = player.toggleInspectMode();
   inspectBtn.classList.toggle('on', inspecting);
   inspectBtn.setAttribute('aria-pressed', String(inspecting));
@@ -353,6 +376,7 @@ document.querySelectorAll('#angles button').forEach((button) => {
     e.stopPropagation();
     if (!started || !player.inspectMode) return;
     player.setInspectAngle(Number(button.dataset.angle));
+    if (viewingStatue) player.orbitYaw = Math.PI - Number(button.dataset.angle);
     document.querySelectorAll('#angles button').forEach((item) => item.classList.toggle('active', item === button));
   });
 });
@@ -526,6 +550,12 @@ function frame(now) {
   }
 
   player.update(dt, input, ruins.colliders, camera);
+  if (viewingStatue) {
+    const focus = sculptureStudy.focus, yaw = player.orbitYaw, pitch = player.pitch;
+    const flat = player.camDist * Math.cos(pitch);
+    camera.position.set(focus.x + flat*Math.sin(yaw), focus.y + player.camDist*Math.sin(pitch), focus.z + flat*Math.cos(yaw));
+    camera.lookAt(focus);
+  }
   updateWaypoint(dt, now * 0.001);
   input.jump = false;
   if (isTouch) input.sprint = input.sprint && Math.hypot(input.moveX, input.moveY) > 0.85;
@@ -570,7 +600,12 @@ function frame(now) {
   hud.update(dt);
 
   const sunPoint = camera.position.clone().addScaledVector(env.sunDir, 600);
-  if (lowQ) {
+  if (viewingStatue) {
+    renderer.setRenderTarget(null);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.render(sculptureStudy.scene, camera);
+    renderer.toneMapping = THREE.NoToneMapping;
+  } else if (lowQ) {
     renderer.setRenderTarget(null);
     renderer.render(scene, camera);
   } else {
