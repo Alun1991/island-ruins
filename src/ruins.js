@@ -205,15 +205,25 @@ float wHash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
         let start = -width / 2;
         while (start < width / 2 - 0.01) {
           const length = Math.min(width / 2 - start, 0.65 + mason() * 0.75);
-          const center = start + length / 2;
+          let center = start + length / 2;
+          let brickLength = length;
           start += length;
+          // Cut the entry and west passage square through the masonry.
+          if ((face === 0 || face === 3) && row < 8) {
+            const left = start - length, right = start;
+            const cutLeft = right <= 0 ? left : Math.max(left, 1.48);
+            const cutRight = left >= 0 ? right : Math.min(right, -1.48);
+            brickLength = cutRight - cutLeft;
+            if (brickLength <= 0.02) continue;
+            center = (cutRight + cutLeft) / 2;
+          }
           if (Math.abs(center) < 0.82 && ((row >= 10 && row < 17) || (row >= 27 && row < 34))) continue;
           if (row > 39 && Math.sin(center * 1.4 + face) > 0.4) continue;
           const depth = width / 2 + 0.22 + mason() * 0.04;
           const tone = 0.67 + mason() * 0.20;
           stone.add(G.box, M4(towerX + center * Math.cos(angle) + depth * Math.sin(angle),
             deck + (row + 0.5) * 0.43, towerZ - center * Math.sin(angle) + depth * Math.cos(angle),
-            0, angle, (mason() - 0.5) * 0.014, length - 0.012, 0.421, 0.55),
+            0, angle, (mason() - 0.5) * 0.014, brickLength - 0.012, 0.421, 0.55),
             new THREE.Color(tone, tone * 0.83, tone * 0.65));
         }
       }
@@ -227,7 +237,40 @@ float wHash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
         wood.add(G.plank, M4(towerX, deck + level + 0.05, towerZ + 3.18 + plank * 0.21, 0, 0, 0, 5.3 + mason() * 0.24, 0.12, 0.198), new THREE.Color(0.56,0.41,0.28));
       }
     }
-    addCollider(towerX, towerZ, 6.8, 6.8, 'watchtower', 19);
+    // Wall-by-wall collision leaves both openings walkable.
+    for (let face = 0; face < 4; face++) {
+      const angle = face * Math.PI / 2;
+      const lateral = face % 2 === 1;
+      const entry = face === 0 || face === 3;
+      const sections = entry ? [[-2.37,1.78],[2.37,1.78]] : [[0,6.52]];
+      for (const [offset, span] of sections) {
+        const x = towerX + offset*Math.cos(angle) + 3.14*Math.sin(angle);
+        const z = towerZ - offset*Math.sin(angle) + 3.14*Math.cos(angle);
+        addCollider(x,z,lateral ? 0.58 : span,lateral ? span : 0.58,'tower-wall',19);
+      }
+      if (!entry) continue;
+      for (const side of [-1,1]) {
+        const offset = side*1.62;
+        for (let j = 0; j < 7; j++) {
+          stone.add(G.box,M4(towerX+offset*Math.cos(angle)+3.14*Math.sin(angle),deck+(j+0.5)*0.49,
+            towerZ-offset*Math.sin(angle)+3.14*Math.cos(angle),0,angle,0,0.28,0.48,0.94),new THREE.Color(.82,.73,.58));
+        }
+      }
+      stone.add(G.box,M4(towerX+3.14*Math.sin(angle),deck+3.59,towerZ+3.14*Math.cos(angle),
+        0,angle,0,3.65,.32,1.04),new THREE.Color(.78,.68,.53));
+    }
+    for (let k = 0; k < 14; k++) {
+      wood.add(G.plank,M4(towerX,deck+4.31,towerZ-2.73+k*.42,0,0,0,6,.13,.407),new THREE.Color(.51,.38,.26));
+    }
+    for (const x of [-2,0,2]) {
+      wood.add(G.plank,M4(towerX+x,deck+4.10,towerZ,0,0,0,.20,.30,6),new THREE.Color(.45,.32,.20));
+    }
+    // Broad approach from the yard to the tower threshold.
+    for (let k=0;k<3;k++) {
+      const top=deck-.12*k, z=towerZ+3.65+k*.48;
+      stone.add(G.box,M4(towerX,top-.22,z,0,0,0,3.9,.44,.5),new THREE.Color(.72,.65,.54));
+      addCollider(towerX,z,3.9,.5,'entry-step',.44,top);
+    }
 
     /* --- deep shaded interior: a receding vault so the arches read as rooms */
     stone.add(G.box, M4(0, deck + 8.4, z0 - 3.4, 0, 0, 0, W - 0.6, 17.0, 1.6), new THREE.Color(0.105, 0.100, 0.088));
@@ -609,28 +652,38 @@ float wHash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
     const seed = Math.round(Math.abs(x * 73856093 + z * 19349663)) % 100000;
     const r = mulberry32(seed);
 
-    // staves: every barrel gets its own bulge profile
-    const profile = [];
-    for (let i = 0; i <= 7; i++) {
-      const t = i / 7;
-      const belly = 0.062 * Math.sin(t * Math.PI) * (0.6 + r() * 0.8);
-      profile.push([0.335 + belly * (0.84 + r() * 0.26), t]);
-    }
-    const geo = new THREE.LatheGeometry(profile.map(([rad, tt]) => new THREE.Vector2(rad, tt)), 12);
-
+    const radius = (height) => 0.335 + 0.066 * Math.sin(Math.PI * height);
+    const wall = Array.from({ length: 13 }, (_, i) => {
+      const h = i / 12;
+      return [radius(h), h];
+    });
+    const profile = [[0, 0.055], [0.301, 0.055], [0.301, 0],
+      ...wall, [0.301, 1], [0.301, 0.945], [0, 0.945]];
     const m = lying
-      ? M4(x, y + 0.34 * sc, z, Math.PI / 2, rr(0, 3), rr(-0.36, 0.36), sc, sc, sc)
-      : M4(x, y + 0.42 * sc, z, rr(-0.09, 0.09), rr(0, 3), rr(-0.09, 0.09), sc, sc, sc);
+      ? M4(x, y + 0.401 * sc, z, 0, rr(0, 3), Math.PI / 2, sc, sc, sc)
+        .multiply(M4(0, -0.5, 0))
+      : M4(x, y, z, 0, rr(0, 3), 0, sc, sc, sc);
+    const tone = 0.56 + (r() - 0.5) * 0.12;
+    const lathe = (points, segments = 48) => new THREE.LatheGeometry(
+      points.map(([rad,h]) => new THREE.Vector2(rad,h)), segments);
+    wood.add(lathe(profile), m, new THREE.Color(tone, tone * 0.76, tone * 0.53));
 
-    const tone = 0.52 + (r() - 0.5) * 0.12;
-    wood.add(geo, m, new THREE.Color(tone, tone * 0.74, tone * 0.48));
-
-    // hoops drift from barrel to barrel
-    for (const h of [-0.30, 0.02, 0.32]) {
-      const hh = h + (r() - 0.5) * 0.05;
-      const w = 0.062 + r() * 0.045;
-      const mm = m.clone().multiply(M4(0, hh * sc, 0, 0, 0, 0, 1.08, w / 0.9, 1.08));
-      metal.add(G.cyl, mm, new THREE.Color(0.42 + (r() - 0.5) * 0.10, 0.35, 0.28));
+    // Narrow grooves follow the curved staves. The recessed heads stay solid.
+    const seam = new THREE.Color(0.28, 0.19, 0.11);
+    for (let stave = 0; stave < 16; stave++) {
+      const a = stave * Math.PI / 8;
+      const geo = new THREE.LatheGeometry(wall.map(([rad,h]) => new THREE.Vector2(rad+0.001,h)), 1, a, 0.013);
+      wood.add(geo,m,seam);
+    }
+    for (const head of [0.055, 0.945]) for (const offset of [-0.17,-0.057,0.057,0.17]) {
+      const chord = 2 * Math.sqrt(0.300**2-offset**2);
+      wood.add(G.box,m.clone().multiply(M4(0,head,offset,0,0,0,chord,0.003,0.007)),seam);
+    }
+    for (const center of [0.13, 0.40, 0.60, 0.87]) {
+      const lo = center - 0.033, hi = center + 0.033;
+      metal.add(lathe([[radius(lo)-0.005,lo], [radius(lo)+0.014,lo],
+        [radius(hi)+0.014,hi], [radius(hi)-0.005,hi], [radius(lo)-0.005,lo]]),
+        m,new THREE.Color(0.42,0.35,0.29));
     }
     addCollider(x, z, 0.85 * sc, 0.85 * sc, 'barrel', 0.95 * sc);
     aoBlob(x, z, 1.8 * sc, 1.8 * sc);
@@ -653,35 +706,44 @@ float wHash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
     aoBlob(x, z, 1.6 * s, 1.6 * s);
   };
 
-  const wheel = (x, y, z, r = 0.46, rot = 0) => {
-    wood.add(new THREE.TorusGeometry(r, 0.07, 6, 18), M4(x, y, z, rot, rr(0, 3), 0),
-      new THREE.Color(0.48, 0.35, 0.22));
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2;
-      wood.add(G.box, M4(x + Math.cos(a) * r * 0.5, y + Math.sin(a) * r * 0.5, z,
-        0, 0, a, r * 0.95, 0.055, 0.055), new THREE.Color(0.44, 0.32, 0.20));
+  const addWheel = (matrix, radius) => {
+    const oak = new THREE.Color(0.54,0.38,0.24);
+    const rimProfile = (inner,outer,half) => new THREE.LatheGeometry(
+      [[inner,-half],[outer,-half],[outer,half],[inner,half],[inner,-half]]
+        .map(([r,h]) => new THREE.Vector2(r,h)), 32).rotateX(Math.PI/2);
+    wood.add(rimProfile(radius-0.085,radius,0.068),matrix,oak);
+    metal.add(rimProfile(radius-0.009,radius+0.015,0.074),matrix,new THREE.Color(0.46,0.39,0.33));
+    const hub = new THREE.CylinderGeometry(0.108,0.108,0.23,16).rotateX(Math.PI/2);
+    wood.add(hub,matrix,oak);
+    for (let spoke = 0; spoke < 8; spoke++) {
+      const angle = spoke * Math.PI/4, center = radius*0.50;
+      wood.add(G.box,matrix.clone().multiply(M4(Math.cos(angle)*center,Math.sin(angle)*center,
+        0,0,0,angle,radius-0.11,0.064,0.081)),oak);
     }
   };
+  const wheel = (x,y,z,r=0.46,tilt=0) => addWheel(M4(x,y,z,tilt,0.28,0),r);
 
   const cart = (x, z, rot = 0.4) => {
-    const y = terrainHeight(x, z);
-    const m = M4(x, y + 0.5, z, 0.10, rot, 0.16);
-    wood.add(G.box, m.clone().multiply(M4(0, 0, 0, 0, 0, 0, 1.9, 0.14, 1.05)),
-      new THREE.Color(0.55, 0.41, 0.26));
-    for (const s of [-1, 1]) {
-      wood.add(G.box, m.clone().multiply(M4(s * 0.92, 0.18, 0, 0, 0, 0, 0.1, 0.34, 1.02)),
-        new THREE.Color(0.50, 0.37, 0.23));
+    const y = terrainHeight(x,z);
+    const frame = M4(x,y,z,0,rot,0);
+    const oak = new THREE.Color(0.58,0.42,0.27);
+    function board(px,py,pz,w,h,d,roll=0) {
+      wood.add(G.box,frame.clone().multiply(M4(px,py,pz,0,0,roll,w,h,d)),oak);
     }
-    wood.add(G.box, m.clone().multiply(M4(0.0, 0.2, -0.5, 0, 0, 0, 1.86, 0.34, 0.1)),
-      new THREE.Color(0.50, 0.37, 0.23));
-    // shafts
-    wood.add(G.box, m.clone().multiply(M4(1.5, 0.06, 0.28, 0.06, 0, 0, 1.5, 0.08, 0.08)),
-      new THREE.Color(0.46, 0.34, 0.21));
-    addCollider(x, z, 2.2, 1.4, 'cart', 1.2);
-    aoBlob(x, z, 3.2, 2.4);
-    const wy = y + 0.62;
-    wheel(x + Math.cos(rot) * 0.9 - Math.sin(rot) * 0.55, wy, z + Math.sin(rot) * 0.9 + Math.cos(rot) * 0.55, 0.5, 0.16);
-    wheel(x + Math.cos(rot) * 0.9 - Math.sin(rot) * -0.55, wy, z + Math.sin(rot) * 0.9 + Math.cos(rot) * -0.55, 0.5, 0.16);
+    for (let i=0;i<5;i++) board(0,0.70,(i-2)*0.20,1.92,0.095,0.194);
+    for (const side of [-1,1]) {
+      board(0,0.86,side*0.516,1.92,0.25,0.075);
+      board(0,1.035,side*0.516,1.92,0.085,0.085);
+      board(0.68,0.57,side*0.38,2.92,0.115,0.115,0.045);
+      board(0.85,0.30,side*0.36,0.12,0.60,0.12,-0.14);
+      for (const post of [-0.85,0,0.85]) board(post,0.86,side*0.545,0.083,0.44,0.092);
+      addWheel(frame.clone().multiply(M4(-0.24,0.515,side*0.67)),0.50);
+    }
+    board(-0.92,0.875,0,0.084,0.32,1.08);
+    const axle = new THREE.CylinderGeometry(0.052,0.052,1.57,12).rotateX(Math.PI/2);
+    metal.add(axle,frame.clone().multiply(M4(-0.24,0.515,0)),new THREE.Color(0.39,0.34,0.29));
+    addCollider(x,z,2.2,1.45,'cart',1.1);
+    aoBlob(x,z,3.2,2.4);
   };
 
   const flag = (x, y, z, w, h, rotY, tex) => {
